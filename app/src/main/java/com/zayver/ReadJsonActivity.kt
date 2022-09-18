@@ -46,7 +46,6 @@ class CountryAdapter (private val mContacts: List<Country>) : RecyclerView.Adapt
         // Get the data model based on position
         val country: Country = mContacts[position]
         // Set item views based on your views and data model
-        Log.d("Hola", "Infooooooo")
         viewHolder.name.text = country.name
         viewHolder.intName.text = country.intName
     }

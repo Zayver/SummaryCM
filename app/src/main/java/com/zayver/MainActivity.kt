@@ -23,13 +23,16 @@ class MainActivity : AppCompatActivity() {
             startActivity(int)
         }
         binding.localizationOnceButton.setOnClickListener {
-
+            val int = Intent(baseContext, LocalizationOnceActivity::class.java)
+            startActivity(int)
         }
         binding.localizationSuscriptionButton.setOnClickListener {
-
+            val int = Intent(baseContext, LocalizationSubscriptionActivity::class.java)
+            startActivity(int)
         }
         binding.exercise3Button.setOnClickListener {
-
+            val int = Intent(baseContext, Exercise3Activity::class.java)
+            startActivity(int)
         }
     }
 }
