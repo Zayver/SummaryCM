@@ -10,7 +10,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.common.api.ApiException
@@ -28,7 +28,7 @@ import java.util.Date
 data class Position(val latitude: Double, val longitude:Double, val date: String){
     fun toJson(): JSONObject{
         val json = JSONObject()
-        json.put("latitud", latitude)
+        json.put("latitude", latitude)
         json.put("longitude", longitude)
         json.put("date", date)
         return json
@@ -68,7 +68,7 @@ class PositionAdapter(private val locations: List<Position>): RecyclerView.Adapt
 
 class Exercise3Activity : AppCompatActivity() {
     companion object{
-        val JSONFILENAME = "locations.json"
+        const val JSONFILENAME = "locations.json"
     }
     private lateinit var binding:ActivityEjercicio3Binding
     //Localización
@@ -76,16 +76,27 @@ class Exercise3Activity : AppCompatActivity() {
     private lateinit var mLocationRequest: LocationRequest
     private lateinit var mFusedLocationClient: FusedLocationProviderClient
     //Permisos
-    private val requestPermission = registerForActivityResult(
+    private val requestGPSenable = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ){
         if(it.resultCode == RESULT_OK){
-            startLocationUpdates()
+            Log.d("Mio", "GPS PERMISSION GRANTED")
         }
         else{
             Log.d("Mio", "GPS off")
         }
     }
+    private val requestPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ){
+        if(it){
+            Log.d("Mio","Acceso a ubicacion once granted")
+        }
+        else{
+            Log.d("Mio","Acceso a ubicacion once DENIEDDDD")
+        }
+    }
+
     //localizacion actual
     private lateinit var actualLocation: Position
     //lista de localizaciones
@@ -95,10 +106,19 @@ class Exercise3Activity : AppCompatActivity() {
         binding = ActivityEjercicio3Binding.inflate(layoutInflater)
         setContentView(binding.root)
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        getInternalLocations()
+        Log.d("Mio", "Info size: ${locations.size}")
         binding.localizationRecycleview.adapter = PositionAdapter(locations)
         binding.localizationRecycleview.layoutManager = LinearLayoutManager(baseContext)
+        binding.saveLocationButton.setOnClickListener {
+            locations.add(actualLocation)
+            saveLocation(actualLocation)
+            binding.localizationRecycleview.adapter?.notifyDataSetChanged()
+        }
+        binding.saveLocationButton.isEnabled = false
         mLocationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
+                binding.saveLocationButton.isEnabled = true
                 actualLocation = Position(
                     locationResult.lastLocation.latitude,
                     locationResult.lastLocation.longitude,
@@ -108,33 +128,33 @@ class Exercise3Activity : AppCompatActivity() {
                 binding.longitudText.text = actualLocation.longitude.toString()
             }
         }
-        binding.saveLocationButton.setOnClickListener {
-            locations.add(actualLocation)
-            writeLocation(actualLocation)
-            binding.localizationRecycleview.adapter?.notifyDataSetChanged()
-        }
+
         mLocationRequest = createLocationRequest()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        requestPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         checkLocationSettings()
 
-
     }
+    override fun onPause() {
+        super.onPause()
+        stopLocationUpdates()
+    }
+
     private fun createLocationRequest(): LocationRequest {
         return LocationRequest.create()
             .setInterval(10000)
             .setFastestInterval(5000)
             .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
     }
-
     private fun getDateHour(): String {
         return getDateTimeInstance().format(Date())
     }
-    override fun onPause() {
-        super.onPause()
-        stopLocationUpdates()
-    }
     private fun startLocationUpdates(){
         when{
-            ContextCompat.checkSelfPermission(baseContext, Manifest.permission.ACCESS_FINE_LOCATION)
+            ActivityCompat.checkSelfPermission(baseContext, Manifest.permission.ACCESS_FINE_LOCATION)
                     == PackageManager.PERMISSION_GRANTED ->{
                 mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback,
                     Looper.getMainLooper() )
@@ -160,50 +180,52 @@ class Exercise3Activity : AppCompatActivity() {
             if((it as ApiException).statusCode == CommonStatusCodes.RESOLUTION_REQUIRED){
                 val resolvable = it as ResolvableApiException
                 val isr = IntentSenderRequest.Builder(resolvable.resolution).build()
-                requestPermission.launch(isr)
+                requestGPSenable.launch(isr)
             }else{
                 Log.d("Mio", "NO GPS AVALIABLE")
             }
         }
     }
-    private fun writeLocation(location:Position){
-        val localizations = getOldLocations()
-        localizations.put(location.toJson())
-        val file = File(baseContext.getExternalFilesDir(null), JSONFILENAME)
-        val output = BufferedWriter(FileWriter(file))
-        output.write(localizations.toString())
-    }
-    private fun getOldLocations(): JSONArray{
+    private fun getInternalLocations(){
         val file = File(baseContext.getExternalFilesDir(null), JSONFILENAME)
         if(!file.exists()){
-            return JSONArray()
+            return
         }
         val input = file.bufferedReader().use {
             it.readText()
         }
-        if(input == "")
-            return JSONArray()
         val json = JSONObject(input)
-        val arrList = ArrayList<Position>()
         val arr = json.getJSONArray("positions")
         for (i in 0 until arr.length()) {
             val latitude = arr.getJSONObject(i).getDouble("latitude")
             val longitude = arr.getJSONObject(i).getDouble("longitude")
             val date = arr.getJSONObject(i).getString("date")
-            arrList.add(Position(latitude, longitude, date))
+            locations.add(Position(latitude, longitude, date))
         }
-        locations = fromJSONArrayToList(arr)
-        return arr
     }
-    private fun fromJSONArrayToList(arr:JSONArray):java.util.ArrayList<Position> {
-        if(arr.length() == 0)
-            return ArrayList()
-        val list = ArrayList<Position>()
-        for(i in 0..arr.length()){
-            val t = arr.get(i) as Position
-            list.add(t)
+    private fun saveLocation(location: Position){
+        val file = File(baseContext.getExternalFilesDir(null), JSONFILENAME)
+        val input: String
+        try{
+            input = file.bufferedReader().use {
+                it.readText()
+            }
+        }catch (e:FileNotFoundException){
+            val obj = JSONObject()
+            val arr = JSONArray()
+            arr.put(actualLocation.toJson())
+            obj.put("positions",arr)
+            file.bufferedWriter().use {
+                it.write(obj.toString())
+            }
+            return
         }
-        return list
+        val json = JSONObject(input)
+        val arr = json.getJSONArray("positions")
+        arr.put(location.toJson())
+        file.bufferedWriter().use {
+            it.write(json.toString())
+        }
     }
 
 }
